@@ -1,7 +1,4 @@
-#include <iostream>
 #include <type_traits>
-
-static const size_t kInnerSize = 8;
 
 template<typename T>
 class DequeIterator;
@@ -14,25 +11,12 @@ class DequeIterator;
 
 template<typename T>
 struct Deque {
-private:
-  static const size_t kDefaultOuterSize = 2;
-
-  size_t outer_size;
-  T** outer;
-  size_t start;
-  size_t finish;
-
-  void Expand();
-
 public:
-  typedef DequeIterator<T> iterator;
-  typedef DequeIterator<const T> const_iterator;
-
   Deque();
 
   Deque(const Deque& other);
 
-  Deque(int quantity);
+  explicit Deque(int quantity);
 
   Deque(int quantity, const T& element);
 
@@ -86,6 +70,9 @@ public:
 
   ~Deque();
 
+  using iterator = DequeIterator<T>;
+  using const_iterator = DequeIterator<const T>;
+
   friend DequeIterator<T>& DequeIterator<T>::operator++();
 
   friend DequeIterator<T>& DequeIterator<T>::operator--();
@@ -93,6 +80,23 @@ public:
   friend void DequeIterator<T>::Increase();
 
   friend void DequeIterator<T>::Decrease();
+
+  friend class DequeIterator<T>;
+
+  friend class DequeIterator<const T>;
+
+private:
+  void Expand();
+
+  void Delete();
+
+  static const size_t kInnerSize = 8;
+  static const size_t kDefaultOuterSize = 2;
+
+  size_t outer_size_;
+  T** outer_;
+  size_t start_;
+  size_t finish_;
 };
 
 
@@ -103,25 +107,9 @@ public:
 
 template<typename T>
 class DequeIterator {
-  size_t position;
-  T** outer_pointer;
-  bool is_reverse;
-
-  void Increase();
-
-  void Decrease();
-
-  DequeIterator(size_t pos, T** outer, bool rev);
-
 public:
-  using value_type = T;
-  using difference_type = int;
-  using iterator_category = std::random_access_iterator_tag;
-  using pointer = value_type*;
-  using reference = value_type&;
-
   operator DequeIterator<const T>() {
-    return DequeIterator<const T>(position, outer_pointer, is_reverse);
+    return DequeIterator<const T>(position_, outer_pointer_, is_reverse_);
   }
 
   DequeIterator& operator++();
@@ -144,18 +132,6 @@ public:
 
   int operator-(const DequeIterator<const typename std::remove_const<T>>& other) const;
 
-  bool operator==(const DequeIterator& other) const;
-
-  bool operator<(const DequeIterator& other) const;
-
-  bool operator!=(const DequeIterator& other) const;
-
-  bool operator>=(const DequeIterator& other) const;
-
-  bool operator>(const DequeIterator& other) const;
-
-  bool operator<=(const DequeIterator& other) const;
-
   T& operator*();
 
   const T& operator*() const;
@@ -167,6 +143,28 @@ public:
   friend struct Deque<T>;
 
   friend struct Deque<typename std::remove_const<T>::type>;
+
+  using value_type = T;
+  using difference_type = int;
+  using iterator_category = std::random_access_iterator_tag;
+  using pointer = value_type*;
+  using reference = value_type&;
+
+private:
+  void Increase();
+
+  void Decrease();
+
+  int Subtract(const DequeIterator& other) const;
+
+  DequeIterator(size_t pos, T** outer, bool rev);
+
+  size_t position_;
+  T** outer_pointer_;
+  bool is_reverse_;
+
+  template<typename U>
+  friend bool operator<(const DequeIterator<U>& first, const DequeIterator<U>& second);
 };
 
 
@@ -177,160 +175,177 @@ public:
 
 template<typename T>
 void Deque<T>::Expand() {
-  auto destination = new T*[outer_size * 2];
-  for (size_t i = 0; i < outer_size / 2; ++i) {
+  auto destination = new T*[outer_size_ * 2];
+  for (size_t i = 0; i < outer_size_ / 2; ++i) {
     destination[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
-  for (size_t i = outer_size / 2; i <= outer_size / 2 + finish / kInnerSize - start / kInnerSize; ++i) {
-    destination[i] = outer[i - outer_size / 2 + start / kInnerSize];
+  for (size_t i = outer_size_ / 2; i <= outer_size_ / 2 + finish_ / kInnerSize - start_ / kInnerSize; ++i) {
+    destination[i] = outer_[i - outer_size_ / 2 + start_ / kInnerSize];
   }
-  for (size_t i = outer_size / 2 + finish / kInnerSize - start / kInnerSize + 1; i < outer_size * 2; ++i) {
+  for (size_t i = outer_size_ / 2 + finish_ / kInnerSize - start_ / kInnerSize + 1; i < outer_size_ * 2; ++i) {
     destination[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
-  finish = (outer_size / 2 + finish / kInnerSize - start / kInnerSize) * kInnerSize + finish % kInnerSize;
-  start = (outer_size / 2) * kInnerSize + start % kInnerSize;
-  delete[] outer;
-  outer = destination;
-  outer_size *= 2;
+  finish_ = (outer_size_ / 2 + finish_ / kInnerSize - start_ / kInnerSize) * kInnerSize + finish_ % kInnerSize;
+  start_ = (outer_size_ / 2) * kInnerSize + start_ % kInnerSize;
+  delete[] outer_;
+  outer_ = destination;
+  outer_size_ *= 2;
+}
+
+template<typename T>
+void Deque<T>::Delete() {
+  if (finish_ >= start_) {
+    for (size_t j = 0; j <= finish_ - start_; ++j) {
+      (*this)[j].~T();
+    }
+  }
+  for (size_t i = 0; i < outer_size_; ++i) {
+    delete[] reinterpret_cast<char*>(outer_[i]);
+  }
+  delete[] outer_;
 }
 
 
 template<typename T>
-Deque<T>::Deque() : outer_size(kDefaultOuterSize), outer(new T*[outer_size]), start(kInnerSize * kDefaultOuterSize / 2), finish(start - 1){
-  for (size_t i = 0; i < outer_size; ++i) {
-    outer[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
+Deque<T>::Deque() : outer_size_(kDefaultOuterSize), outer_(new T*[outer_size_]),
+                    start_(kInnerSize * kDefaultOuterSize / 2), finish_(start_ - 1) {
+  for (size_t i = 0; i < outer_size_; ++i) {
+    outer_[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
 }
 
 template<typename T>
-Deque<T>::Deque(const Deque& other) : outer_size(other.outer_size), outer(new T*[outer_size]), start(other.start), finish(other.finish) {
-  for (size_t i = 0; i < outer_size; ++i) {
-    outer[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
+Deque<T>::Deque(const Deque& other) : outer_size_(other.outer_size_), outer_(new T*[outer_size_]),
+                                      start_(other.start_), finish_(other.finish_) {
+  for (size_t i = 0; i < outer_size_; ++i) {
+    outer_[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
   size_t pos;
   try {
-    for (pos = start; pos <= finish; ++pos) {
-      new(outer[pos / kInnerSize] + pos % kInnerSize) T(other[pos - start]);
+    for (pos = start_; pos <= finish_; ++pos) {
+      new(outer_[pos / kInnerSize] + pos % kInnerSize) T(other[pos - start_]);
     }
   } catch (...) {
-    finish = pos;
-    this->~Deque();
+    finish_ = pos;
+    Delete();
   }
 }
 
 template<typename T>
-Deque<T>::Deque(int quantity) : outer_size((quantity / kInnerSize + 1) * 2), outer(new T*[outer_size]), start(kInnerSize * kDefaultOuterSize / 2), finish(start + quantity - 1){
-  for (size_t i = 0; i < outer_size; ++i) {
-    outer[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
+Deque<T>::Deque(int quantity) : outer_size_((quantity / kInnerSize + 1) * 2), outer_(new T*[outer_size_]),
+                                start_(kInnerSize * kDefaultOuterSize / 2), finish_(start_ + quantity - 1) {
+  for (size_t i = 0; i < outer_size_; ++i) {
+    outer_[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
   size_t pos;
   try {
-    for (pos = start; pos <= finish; ++pos) {
-      new(outer[pos / kInnerSize] + pos % kInnerSize) T();
+    for (pos = start_; pos <= finish_; ++pos) {
+      new(outer_[pos / kInnerSize] + pos % kInnerSize) T();
     }
   } catch (...) {
-    finish = pos - 1;
+    finish_ = pos - 1;
   }
 }
 
 template<typename T>
-Deque<T>::Deque(int quantity, const T& element) : outer_size((quantity / kInnerSize + 1) * 2), outer(new T*[outer_size]), start(kInnerSize * kDefaultOuterSize / 2), finish(start + quantity - 1){
-  for (size_t i = 0; i < outer_size; ++i) {
-    outer[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
+Deque<T>::Deque(int quantity, const T& element) : outer_size_((quantity / kInnerSize + 1) * 2), outer_(new T*[outer_size_]),
+                                                  start_(kInnerSize * kDefaultOuterSize / 2), finish_(start_ + quantity - 1) {
+  for (size_t i = 0; i < outer_size_; ++i) {
+    outer_[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
   size_t pos;
   try {
-    for (pos = start; pos <= finish; ++pos) {
-      new(outer[pos / kInnerSize] + pos % kInnerSize) T(element);
+    for (pos = start_; pos <= finish_; ++pos) {
+      new(outer_[pos / kInnerSize] + pos % kInnerSize) T(element);
     }
   } catch (...) {
-    finish = pos;
+    finish_ = pos;
   }
 }
 
 template<typename T>
 Deque<T>& Deque<T>::operator=(const Deque& other) {
-  T** buffer = outer;
-  outer = new T*[other.outer_size];
-  for (size_t i = 0; i < other.outer_size; ++i) {
-    outer[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
+  T** buffer = outer_;
+  outer_ = new T*[other.outer_size_];
+  for (size_t i = 0; i < other.outer_size_; ++i) {
+    outer_[i] = reinterpret_cast<T*>(new char[sizeof(T) * kInnerSize]);
   }
   size_t pos;
   try {
-    for (pos = other.start; pos <= other.finish; ++pos) {
-      new(outer[pos / kInnerSize] + pos % kInnerSize) T(other[pos - other.start]);
+    for (pos = other.start_; pos <= other.finish_; ++pos) {
+      new(outer_[pos / kInnerSize] + pos % kInnerSize) T(other[pos - other.start_]);
     }
-    for (size_t i = start; i <= finish; ++i) {
+    for (size_t i = start_; i <= finish_; ++i) {
       buffer[i / kInnerSize][i % kInnerSize].~T();
     }
-    for (size_t i = 0; i < outer_size; ++i) {
+    for (size_t i = 0; i < outer_size_; ++i) {
       delete[] reinterpret_cast<char*>(buffer[i]);
     }
     delete[] buffer;
-    start = other.start;
-    finish = other.finish;
-    outer_size = other.outer_size;
+    start_ = other.start_;
+    finish_ = other.finish_;
+    outer_size_ = other.outer_size_;
   } catch (...) {
-    size_t saved = finish;
-    finish = pos;
-    this->~Deque();
-    finish = saved;
-    outer = buffer;
+    size_t saved = finish_;
+    finish_ = pos;
+    Delete();
+    finish_ = saved;
+    outer_ = buffer;
   }
   return *this;
 }
 
 template<typename T>
-size_t Deque<T>::size() const { return finish - start + 1; }
+size_t Deque<T>::size() const { return finish_ - start_ + 1; }
 
 template<typename T>
 void Deque<T>::push_back(const T& value) {
-  if (finish == outer_size * kInnerSize - 1) {
+  if (finish_ == outer_size_ * kInnerSize - 1) {
     Expand();
   }
   try {
-    ++finish;
-    new(outer[finish / kInnerSize] + finish % kInnerSize) T(value);
+    ++finish_;
+    new(outer_[finish_ / kInnerSize] + finish_ % kInnerSize) T(value);
   } catch (...) {
-    --finish;
+    --finish_;
   }
 }
 
 template<typename T>
 void Deque<T>::push_front(const T& value) {
-  if (start == 0) {
+  if (start_ == 0) {
     Expand();
   }
   try {
-    --start;
-    new(outer[start / kInnerSize] + start % kInnerSize) T(value);
+    --start_;
+    new(outer_[start_ / kInnerSize] + start_ % kInnerSize) T(value);
   } catch (...) {
-    ++start;
+    ++start_;
   }
 }
 
 template<typename T>
 void Deque<T>::pop_back() {
-  outer[finish / kInnerSize][finish % kInnerSize].~T();
-  --finish;
+  outer_[finish_ / kInnerSize][finish_ % kInnerSize].~T();
+  --finish_;
 }
 
 template<typename T>
 void Deque<T>::pop_front() {
-  outer[start / kInnerSize][start % kInnerSize].~T();
-  ++start;
+  outer_[start_ / kInnerSize][start_ % kInnerSize].~T();
+  ++start_;
 }
 
 template<typename T>
 T& Deque<T>::operator[](size_t pos) {
-  pos += start;
-  return outer[pos / kInnerSize][pos % kInnerSize];
+  pos += start_;
+  return outer_[pos / kInnerSize][pos % kInnerSize];
 }
 
 template<typename T>
 const T& Deque<T>::operator[](size_t pos) const {
-  pos += start;
-  return outer[pos / kInnerSize][pos % kInnerSize];
+  pos += start_;
+  return outer_[pos / kInnerSize][pos % kInnerSize];
 }
 
 template<typename T>
@@ -338,54 +353,70 @@ T& Deque<T>::at(size_t pos) {
   if (pos < 0 or pos >= size()) {
     throw std::out_of_range("Deque index out of range");
   }
-  pos += start;
-  return outer[pos / kInnerSize][pos % kInnerSize];
+  pos += start_;
+  return outer_[pos / kInnerSize][pos % kInnerSize];
 }
 
 template<typename T>
 const T& Deque<T>::at(size_t pos) const {
-  if (pos < start or pos >= finish) {
+  if (pos < start_ or pos >= finish_) {
     throw std::out_of_range("Deque index out of range");
   }
-  pos += start;
-  return outer[pos / kInnerSize][pos % kInnerSize];
+  pos += start_;
+  return outer_[pos / kInnerSize][pos % kInnerSize];
 }
 
 template<typename T>
-DequeIterator<T> Deque<T>::begin() { return DequeIterator<T>(start, outer + (start / kInnerSize), false); }
+DequeIterator<T> Deque<T>::begin() { return DequeIterator<T>(start_, outer_ + (start_ / kInnerSize), false); }
 
 template<typename T>
-DequeIterator<T> Deque<T>::end() { return DequeIterator<T>((finish + 1), outer + ((finish + 1) / kInnerSize), false); }
+DequeIterator<T> Deque<T>::end() { return DequeIterator<T>((finish_ + 1), outer_ + ((finish_ + 1) / kInnerSize), false); }
 
 template<typename T>
-DequeIterator<const T> Deque<T>::begin() const { return DequeIterator<const T>(start, const_cast<const T**>(outer + (start / kInnerSize)), false); }
+DequeIterator<const T> Deque<T>::begin() const {
+  return cbegin();
+}
 
 template<typename T>
-DequeIterator<const T> Deque<T>::end() const { return DequeIterator<const T>((finish + 1), const_cast<const T**>(outer + ((finish + 1) / kInnerSize)), false); }
+DequeIterator<const T> Deque<T>::end() const {
+  return cend();
+}
 
 template<typename T>
-DequeIterator<const T> Deque<T>::cbegin() const { return DequeIterator<const T>(start, const_cast<const T**>(outer + (start / kInnerSize)), false); }
+DequeIterator<const T> Deque<T>::cbegin() const {
+  return DequeIterator<const T>(start_, const_cast<const T**>(outer_ + (start_ / kInnerSize)), false);
+}
 
 template<typename T>
-DequeIterator<const T> Deque<T>::cend() const { return DequeIterator<const T>((finish + 1), const_cast<const T**>(outer + ((finish + 1) / kInnerSize)), false); }
+DequeIterator<const T> Deque<T>::cend() const {
+  return DequeIterator<const T>((finish_ + 1), const_cast<const T**>(outer_ + ((finish_ + 1) / kInnerSize)), false);
+}
 
 template<typename T>
-DequeIterator<T> Deque<T>::rbegin() { return DequeIterator<T>(finish, outer + (finish / kInnerSize), true); }
+DequeIterator<T> Deque<T>::rbegin() { return DequeIterator<T>(finish_, outer_ + (finish_ / kInnerSize), true); }
 
 template<typename T>
-DequeIterator<T> Deque<T>::rend() { return DequeIterator<T>((start - 1), outer + ((start - 1) / kInnerSize), true); }
+DequeIterator<T> Deque<T>::rend() { return DequeIterator<T>((start_ - 1), outer_ + ((start_ - 1) / kInnerSize), true); }
 
 template<typename T>
-DequeIterator<const T> Deque<T>::rbegin() const { return DequeIterator<const T>(finish, const_cast<const T**>(outer + (finish / kInnerSize)), true); }
+DequeIterator<const T> Deque<T>::rbegin() const {
+  return crbegin();
+}
 
 template<typename T>
-DequeIterator<const T> Deque<T>::rend() const { return DequeIterator<const T>((start - 1), const_cast<const T**>(outer + ((start - 1) / kInnerSize)), true); }
+DequeIterator<const T> Deque<T>::rend() const {
+  return crend();
+}
 
 template<typename T>
-DequeIterator<const T> Deque<T>::crbegin() const { return DequeIterator<const T>(finish, const_cast<const T**>(outer + (finish / kInnerSize), true)); }
+DequeIterator<const T> Deque<T>::crbegin() const {
+  return DequeIterator<const T>(finish_, const_cast<const T**>(outer_ + (finish_ / kInnerSize), true));
+}
 
 template<typename T>
-DequeIterator<const T> Deque<T>::crend() const { return DequeIterator<const T>((start - 1), const_cast<const T**>(outer + ((start - 1) / kInnerSize)), true); }
+DequeIterator<const T> Deque<T>::crend() const {
+  return DequeIterator<const T>((start_ - 1), const_cast<const T**>(outer_ + ((start_ - 1) / kInnerSize)), true);
+}
 
 template<typename T>
 void Deque<T>::insert(const DequeIterator<T>& it, const T& elem) {
@@ -407,8 +438,8 @@ void Deque<T>::insert(const DequeIterator<T>& it, const T& elem) {
 
 template<typename T>
 void Deque<T>::erase(const DequeIterator<T>& it) {
-  DequeIterator forward = DequeIterator(it.position, it.outer_pointer, false);
-  forward.is_reverse = false;
+  DequeIterator forward = DequeIterator(it.position_, it.outer_pointer_, false);
+  forward.is_reverse_ = false;
   DequeIterator backward = forward;
   ++forward;
   DequeIterator stop = end();
@@ -421,17 +452,7 @@ void Deque<T>::erase(const DequeIterator<T>& it) {
 }
 
 template<typename T>
-Deque<T>::~Deque() {
-  if (finish >= start) {
-    for (size_t j = 0; j <= finish - start; ++j) {
-      (*this)[j].~T();
-    }
-  }
-  for (size_t i = 0; i < outer_size; ++i) {
-    delete[] reinterpret_cast<char*>(outer[i]);
-  }
-  delete[] outer;
-}
+Deque<T>::~Deque() { Delete(); }
 
 
 /// ########################################################################################
@@ -441,29 +462,36 @@ Deque<T>::~Deque() {
 
 template<typename T>
 void DequeIterator<T>::Increase() {
-  if (position % kInnerSize == kInnerSize - 1) {
-    ++outer_pointer;
+  if (position_ % Deque<T>::kInnerSize == Deque<T>::kInnerSize - 1) {
+    ++outer_pointer_;
   }
-  ++position;
+  ++position_;
 }
 
 template<typename T>
 void DequeIterator<T>::Decrease() {
-  if (position % kInnerSize == 0) {
-    --outer_pointer;
+  if (position_ % Deque<T>::kInnerSize == 0) {
+    --outer_pointer_;
   }
-  --position;
+  --position_;
+}
+
+
+template<typename T>
+int DequeIterator<T>::Subtract(const DequeIterator& other) const {
+  int buff = position_ - other.position_;
+  if (is_reverse_) {
+    buff *= -1;
+  }
+  return buff;
 }
 
 template<typename T>
-DequeIterator<T>::DequeIterator(size_t pos, T** outer, bool rev) : position(pos), outer_pointer(outer), is_reverse(rev) {}
-
-// template<typename T>
-// DequeIterator<T>::DequeIterator(const DequeIterator& other) : position(other.position), outer_pointer(other.outer_pointer), is_reverse(other.is_reverse) {}
+DequeIterator<T>::DequeIterator(size_t pos, T** outer, bool rev) : position_(pos), outer_pointer_(outer), is_reverse_(rev) {}
 
 template<typename T>
 DequeIterator<T>& DequeIterator<T>::operator++() {
-  if (!is_reverse) {
+  if (!is_reverse_) {
     Increase();
   } else {
     Decrease();
@@ -473,7 +501,7 @@ DequeIterator<T>& DequeIterator<T>::operator++() {
 
 template<typename T>
 DequeIterator<T>& DequeIterator<T>::operator--() {
-  if (!is_reverse) {
+  if (!is_reverse_) {
     Decrease();
   } else {
     Increase();
@@ -500,24 +528,24 @@ DequeIterator<T>& DequeIterator<T>::operator+=(int value) {
   if (value == 0) {
     return *this;
   }
-  if ((value > 0 && !is_reverse) || (value < 0 && is_reverse)) {
+  if ((value > 0 && !is_reverse_) || (value < 0 && is_reverse_)) {
     if (value < 0) {
       value = -value;
     }
-    outer_pointer += value / kInnerSize;
-    if (value % kInnerSize + position % kInnerSize >= kInnerSize) {
-      ++outer_pointer;
+    outer_pointer_ += value / Deque<T>::kInnerSize;
+    if (value % Deque<T>::kInnerSize + position_ % Deque<T>::kInnerSize >= Deque<T>::kInnerSize) {
+      ++outer_pointer_;
     }
-    position += value;
+    position_ += value;
   } else {
     if (value < 0) {
       value = -value;
     }
-    outer_pointer -= value / kInnerSize;
-    if (position % kInnerSize - value % kInnerSize >= kInnerSize) {
-      --outer_pointer;
+    outer_pointer_ -= value / Deque<T>::kInnerSize;
+    if (position_ % Deque<T>::kInnerSize - value % Deque<T>::kInnerSize >= Deque<T>::kInnerSize) {
+      --outer_pointer_;
     }
-    position -= value;
+    position_ -= value;
   }
   return *this;
 }
@@ -537,48 +565,40 @@ DequeIterator<T> DequeIterator<T>::operator-(int value) const { return *this + -
 
 template<typename T>
 int DequeIterator<T>::operator-(const DequeIterator& other) const {
-  int buff = position - other.position;
-  if (is_reverse) {
-    buff *= -1;
-  }
-  return buff;
+  return Subtract(other);
 }
 
 template<typename T>
 int DequeIterator<T>::operator-(const DequeIterator<const typename std::remove_const<T>>& other) const {
-  int buff = position - other.position;
-  if (is_reverse) {
-    buff *= -1;
-  }
-  return buff;
+  return Subtract(other);
 }
 
 template<typename T>
-bool DequeIterator<T>::operator==(const DequeIterator& other) const { return (position == other.position); }
+bool operator<(const DequeIterator<T>& first, const DequeIterator<T>& second) { return (first.position_ != second.position_) && (first.position_ < second.position_) ^ (first.is_reverse_); }
 
 template<typename T>
-bool DequeIterator<T>::operator<(const DequeIterator& other) const { return (position < other.position) ^ (is_reverse); }
+bool operator==(const DequeIterator<T>& first, const DequeIterator<T>& second) { return !(first < second) && !(second < first); }
 
 template<typename T>
-bool DequeIterator<T>::operator!=(const DequeIterator& other) const { return !(*this == other); }
+bool operator!=(const DequeIterator<T>& first, const DequeIterator<T>& second) { return !(first == second); }
 
 template<typename T>
-bool DequeIterator<T>::operator>=(const DequeIterator& other) const { return !(*this < other); }
+bool operator>=(const DequeIterator<T>& first, const DequeIterator<T>& second) { return !(first < second); }
 
 template<typename T>
-bool DequeIterator<T>::operator>(const DequeIterator& other) const { return (*this != other && *this >= other); }
+bool operator>(const DequeIterator<T>& first, const DequeIterator<T>& second) { return (first != second && first >= second); }
 
 template<typename T>
-bool DequeIterator<T>::operator<=(const DequeIterator& other) const { return (*this == other || *this < other); }
+bool operator<=(const DequeIterator<T>& first, const DequeIterator<T>& second) { return (first == second || first < second); }
 
 template<typename T>
-T& DequeIterator<T>::operator*() { return (*outer_pointer)[position % kInnerSize]; }
+T& DequeIterator<T>::operator*() { return (*outer_pointer_)[position_ % Deque<T>::kInnerSize]; }
 
 template<typename T>
-const T& DequeIterator<T>::operator*() const { return (*outer_pointer)[position % kInnerSize]; }
+const T& DequeIterator<T>::operator*() const { return (*outer_pointer_)[position_ % Deque<T>::kInnerSize]; }
 
 template<typename T>
-T* DequeIterator<T>::operator->() { return &(*outer_pointer)[position % kInnerSize]; }
+T* DequeIterator<T>::operator->() { return &(*outer_pointer_)[position_ % Deque<T>::kInnerSize]; }
 
 template<typename T>
-const T* DequeIterator<T>::operator->() const { return &(*outer_pointer)[position % kInnerSize]; }
+const T* DequeIterator<T>::operator->() const { return &(*outer_pointer_)[position_ % Deque<T>::kInnerSize]; }

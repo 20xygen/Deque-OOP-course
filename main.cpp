@@ -43,8 +43,5 @@ int main() {
       decltype(std::declval<Deque<int>>().cbegin())
   >, "should be able to construct const iterator from non const iterator");
 
-
-  std::cout << "////////////////////////////////////////////////\n";
-
   return 0;
 }
