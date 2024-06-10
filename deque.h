@@ -226,8 +226,9 @@ Deque<T>::Deque(const Deque& other) : outer_size_(other.outer_size_), outer_(new
       new(outer_[pos / kInnerSize] + pos % kInnerSize) T(other[pos - start_]);
     }
   } catch (...) {
-    finish_ = pos;
+    finish_ = pos - 1;
     Delete();
+    throw;
   }
 }
 
@@ -259,7 +260,9 @@ Deque<T>::Deque(int quantity, const T& element) : outer_size_((quantity / kInner
       new(outer_[pos / kInnerSize] + pos % kInnerSize) T(element);
     }
   } catch (...) {
-    finish_ = pos;
+    finish_ = pos - 1;
+    Delete();
+    throw;
   }
 }
 
@@ -287,10 +290,11 @@ Deque<T>& Deque<T>::operator=(const Deque& other) {
     outer_size_ = other.outer_size_;
   } catch (...) {
     size_t saved = finish_;
-    finish_ = pos;
+    finish_ = pos - 1;
     Delete();
     finish_ = saved;
     outer_ = buffer;
+    throw;
   }
   return *this;
 }
@@ -308,6 +312,7 @@ void Deque<T>::push_back(const T& value) {
     new(outer_[finish_ / kInnerSize] + finish_ % kInnerSize) T(value);
   } catch (...) {
     --finish_;
+    throw;
   }
 }
 
@@ -321,6 +326,7 @@ void Deque<T>::push_front(const T& value) {
     new(outer_[start_ / kInnerSize] + start_ % kInnerSize) T(value);
   } catch (...) {
     ++start_;
+    throw;
   }
 }
 
